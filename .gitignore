@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+._*
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# ide
+.vscode/
+.idea/
+
