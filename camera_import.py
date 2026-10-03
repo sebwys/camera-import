@@ -5,9 +5,9 @@
 # workflow (video):
 #   1. pull    card -> <media>/The Dump/<ts>_<card>/
 #   2. sort    interactive: pick a location per video, copy it plus sidecars to
-#              The Footage/<Camera>/<Location>/, then re-verify destination
-#              hashes against the dump checksums and delete the dump folder.
-#              dump deletion is gated on the destination verify.
+#              The Footage/<Camera>/<Location>/, then reverify destination
+#              hashes against the dump checksums. the dump folder is deleted
+#              only when that verify passes.
 #   3. status  what is sorted vs unsorted across all dumps
 #   4. verify  recheck a dump's internal hashes
 #
@@ -18,10 +18,10 @@
 # repair:
 #   backfill   footage sorted by an older version has the .MP4 but no M01.XML
 #              and no T01.JPG. those sidecars only exist on the original card.
-#              backfill matches footage videos to mounted-card clips by
-#              (name, size) and copies the missing sidecars in. read-only by
-#              default; --apply copies; --accept marks the gaps no card can
-#              fill as final, so the archive reads complete.
+#              backfill matches footage videos to clips on mounted cards by
+#              (name, size) and copies the missing sidecars in. it copies
+#              nothing by default. --apply copies. --accept marks the gaps no
+#              card can fill as final, so the archive reads complete.
 #
 # sidecar handling:
 #   SONY    video file        Sony FX300814.MP4
@@ -29,7 +29,7 @@
 #           thumbnail         Sony FX300814T01.JPG   (THMBNL/ sibling folder)
 #   DJI     video             DJI_0001.MP4
 #           GPS telemetry     DJI_0001.SRT
-#           low-res preview   DJI_0001.LRF
+#           proxy video       DJI_0001.LRF
 #   IPHONE  video             IMG_0001.MOV
 #           edit metadata     IMG_0001.AAE
 
@@ -47,7 +47,7 @@ import xxhash
 
 
 # ============================================================
-# Configuration
+# configuration
 # ============================================================
 
 # override with CAMERA_MEDIA_BASE
@@ -57,15 +57,15 @@ THE_FOOTAGE = MEDIA_BASE / "The Footage"
 THE_IMAGES = MEDIA_BASE / "The Images"
 LOG_FILE = MEDIA_BASE / "import_log.txt"
 
-# Videos accepted as permanently sidecar-less (their original card is gone).
+# videos whose missing sidecars are accepted for good (their original card is gone).
 # backfill records them here so it stops flagging them and reports the archive
-# complete. Anything missing a sidecar that is NOT listed here is a new problem.
+# complete. anything missing a sidecar that is not listed here is a new problem.
 SIDECAR_BASELINE = MEDIA_BASE / ".sidecar_baseline.json"
 
-# Camera definitions.
-#   folder            destination top-level folder under The Footage
-#   sidecar_strategy  "sony"      - Sony FX30 cross-folder match (M01.XML + THMBNL/T01.JPG)
-#                     "extension" - same-stem files matching the extension list
+# camera definitions.
+#   folder            destination folder at the top of The Footage
+#   sidecar_strategy  "sony"      - Sony FX30 match across folders (M01.XML + THMBNL/T01.JPG)
+#                     "extension" - files with the video's stem and a listed extension
 CAMERAS = {
     "SONY": {
         "folder": "Sony SLOG-3",
@@ -83,10 +83,9 @@ CAMERAS = {
     },
 }
 
-# Substrings that signal a camera body, not a location. Guards select_country()
-# against the Mavic Mini regression where a folder named after a camera model
-# became a "location" in the picker. Curated to be distinctive (no false hits
-# in real country/event names).
+# substrings that mean a camera body, not a location. select_country() warns on
+# them so a model name never becomes a location folder. curated to be distinctive
+# (no false hits in real country/event names).
 CAMERA_MODEL_KEYWORDS = (
     # DJI bodies
     "mavic", "phantom", "inspire", "osmo", "ronin",
@@ -106,7 +105,7 @@ IMAGE_EXTENSIONS = {
     ".dng", ".arw", ".cr2", ".cr3", ".nef", ".raf", ".raw",
 }
 
-# Substring match against /Volumes/<name> for SD card detection
+# substring match against /Volumes/<name> for SD card detection
 CARD_PATTERNS = ["SD512", "SD256", "SD128", "UNTITLED", "NO NAME",
                  "EOS_DIGITAL", "SONY", "DJI", "NIKON"]
 
@@ -115,11 +114,11 @@ HASH_ALGORITHM = "xxh3_128"
 
 
 # ============================================================
-# Hash helpers
+# hash helpers
 # ============================================================
 
 def hash_file(path, algorithm=HASH_ALGORITHM):
-    """Stream-hash a file. Default xxh3_128 (fast); 'md5' for legacy dumps."""
+    """Hash a file in chunks. Default xxh3_128 (fast). 'md5' is for legacy dumps."""
     if algorithm == "xxh3_128":
         h = xxhash.xxh3_128()
         block = HASH_CHUNK
@@ -136,7 +135,7 @@ def hash_file(path, algorithm=HASH_ALGORITHM):
 
 
 def compute_checksums(directory):
-    """Hash every non-hidden file in a directory tree.
+    """Hash every file in a directory tree except dotfiles.
     Returns {relpath: hash, '_algorithm': name}. The algorithm marker lets
     verify_dump detect legacy MD5 dumps written before 2026.
     """
@@ -149,7 +148,7 @@ def compute_checksums(directory):
 
 
 # ============================================================
-# Camera + sidecar discovery
+# camera + sidecar discovery
 # ============================================================
 
 def detect_camera(file_path):
@@ -194,10 +193,10 @@ def _guess_sony_dump_root(video_path):
 def find_sony_sidecars(video_path, dump_root):
     """Sony FX30 layout:
        <dump>/PRIVATE/M4ROOT/CLIP/<stem>.MP4           - video
-       <dump>/PRIVATE/M4ROOT/CLIP/<stem>M01.XML        - per-clip metadata
+       <dump>/PRIVATE/M4ROOT/CLIP/<stem>M01.XML        - clip metadata
        <dump>/PRIVATE/M4ROOT/THMBNL/<stem>T01.JPG      - thumbnail
-    Case-insensitive: we iterate the real folder and match by upper-cased stem,
-    so the on-disk filename (preserving its real case) is what gets returned.
+    Matching ignores case. We iterate the real folder and compare uppercased
+    stems, so the returned path keeps the file's real case.
     """
     sidecars = []
     stem_upper = video_path.stem.upper()  # e.g. "SONY FX300814"
@@ -215,7 +214,7 @@ def find_sony_sidecars(video_path, dump_root):
             sidecars.append(sibling)
             break
 
-    # Thumbnail lives in THMBNL/
+    # thumbnail lives in THMBNL/
     thmbnl = Path(dump_root) / "PRIVATE" / "M4ROOT" / "THMBNL"
     if thmbnl.is_dir():
         thm_target = f"{stem_upper}T01"
@@ -234,7 +233,7 @@ def find_sony_sidecars(video_path, dump_root):
 
 
 def find_extension_sidecars(video_path, camera_type):
-    """Same-stem siblings whose extension is in the camera's sidecar list."""
+    """Siblings with the video's stem whose extension is in the camera's sidecar list."""
     extensions = {ext.lower() for ext in
                   CAMERAS.get(camera_type, {}).get("sidecar_extensions", [])}
     if not extensions:
@@ -283,7 +282,7 @@ def find_image_files(search_path):
 
 
 # ============================================================
-# Card detection
+# card detection
 # ============================================================
 
 def find_mounted_cards():
@@ -314,7 +313,7 @@ def find_dcim_cards():
 
 
 # ============================================================
-# File counting + footage indexing
+# file counting + footage indexing
 # ============================================================
 
 def count_files(path, exclude_hidden=True):
@@ -331,8 +330,8 @@ def count_files(path, exclude_hidden=True):
 
 
 def build_footage_index():
-    """{video_filename: footage_path} for non-zero video files in The Footage.
-    Zero-byte files are skipped (iCloud ghost files - treated as unsorted)."""
+    """{video_filename: footage_path} for nonzero video files in The Footage.
+    Empty files are skipped (iCloud ghost files, treated as unsorted)."""
     index = {}
     if not THE_FOOTAGE.exists():
         return index
@@ -349,9 +348,9 @@ def build_footage_index():
 
 
 def build_footage_size_index():
-    """{(filename, size)} for non-zero videos in The Footage. Used at pull
-    time to dedup against already-sorted clips by (name, size) - needed
-    because Sony reuses clip numbers after a card format."""
+    """{(filename, size)} for nonzero videos in The Footage. Pull uses it to
+    skip clips that are already sorted. It matches on (name, size) because
+    Sony reuses clip numbers after a card format."""
     index = set()
     if not THE_FOOTAGE.exists():
         return index
@@ -393,7 +392,7 @@ def find_card_excludes(card_path, size_index):
         skipped_videos += 1
         skipped_bytes += size
 
-        # Also exclude sidecars for the skipped video
+        # also exclude sidecars for the skipped video
         camera = detect_camera(f)
         for sc in find_sidecars(f, camera, dump_root=card_path):
             patterns.append("/" + sc.relative_to(card_path).as_posix())
@@ -402,14 +401,12 @@ def find_card_excludes(card_path, size_index):
 
 
 # ============================================================
-# Pull workflow (card -> local dump)
+# pull workflow (card -> local dump)
 # ============================================================
 
 def find_existing_dump_for_card(card_name, source_count):
-    """Return path to an existing COMPLETE dump for this card whose source
-    file count matches - i.e., a pull that already captured the same content.
-    Returns None if no duplicate found. Used to guard against double-pulling.
-    """
+    """Return the existing complete dump for this card with the same source
+    file count, or None. Guards against pulling a card twice."""
     if not THE_DUMP.exists():
         return None
     for d in sorted(THE_DUMP.iterdir()):
@@ -435,7 +432,7 @@ def pull_card(card_path, force=False):
     xxHash checksums, write manifest.
 
     Guards against accidental duplicate pulls: if a completed dump already
-    exists for this card with the same source-file count, prompts to skip
+    exists for this card with the same source file count, prompts to skip
     (unless force=True).
     """
     card_path = Path(card_path)
@@ -449,13 +446,12 @@ def pull_card(card_path, force=False):
     source_count = count_files(card_path)
     print(f"  Source: {source_count} files on card")
 
-    # Duplicate-pull guard
+    # guard against a duplicate pull
     if not force:
         existing = find_existing_dump_for_card(card_name, source_count)
         if existing is not None:
-            print(f"\n  warning:  A complete dump for {card_name} already exists with the")
+            print(f"\n  WARNING: A complete dump for {card_name} already exists with the")
             print(f"     same file count ({source_count}): {existing.name}")
-            print(f"     This would create a duplicate of the same card contents.")
             ans = input("  Pull anyway? (y/N): ").strip().lower()
             if ans != "y":
                 print(f"  Skipped. Existing dump: {existing}")
@@ -468,7 +464,7 @@ def pull_card(card_path, force=False):
 
     dump_path.mkdir(parents=True, exist_ok=True)
 
-    # Dedup against already-sorted clips
+    # skip clips that are already sorted
     size_index = build_footage_size_index()
     excludes, skipped_videos, skipped_bytes = find_card_excludes(card_path, size_index)
     exclude_file = None
@@ -508,7 +504,7 @@ def pull_card(card_path, force=False):
     if dest_count >= expected:
         print("  File count: VERIFIED")
     else:
-        print(f"  WARNING: {expected - dest_count} files may be missing!")
+        print(f"  WARNING: {expected - dest_count} files may be missing.")
 
     print("Generating checksums (xxh3_128)...")
     checksums = compute_checksums(dump_path)
@@ -549,16 +545,16 @@ def pull_card(card_path, force=False):
     return dump_path
 
 
-# Backwards-compat alias - older docs and habits still use `dump`
+# alias kept because older docs and habits still use `dump`
 dump_card = pull_card
 
 
 # ============================================================
-# Sort workflow (dump -> footage, then verify + mirror + cleanup)
+# sort workflow (dump -> footage, then verify + cleanup)
 # ============================================================
 
 def parse_selection(text, max_count):
-    """Parse '1-5,8,12' into zero-based indices. Returns [] on parse error."""
+    """Parse '1-5,8,12' into indices counted from 0. Returns [] on parse error."""
     indices = set()
     for part in text.split(","):
         part = part.strip()
@@ -581,9 +577,9 @@ def parse_selection(text, max_count):
 
 
 def select_country():
-    """Pick a destination country/event. Shows existing, accepts new. Guards
-    against camera-body names like 'Mavic Mini' that would create a misclass-
-    ified location bucket; you can still override with y."""
+    """Pick a destination country/event. Shows existing, accepts new. Warns on
+    camera body names like 'Mavic Mini' that would create a misclassified
+    location folder. You can still override with y."""
     existing = set()
     if THE_FOOTAGE.exists():
         for cam_dir in THE_FOOTAGE.iterdir():
@@ -617,8 +613,8 @@ def build_dest_path(camera_type, country):
 
 
 def copy_one_file(src, dest_file):
-    """rsync a single file. Handles iCloud-ghost destinations (0-byte stubs
-    from prior failed copies). Returns True on success."""
+    """rsync a single file. Handles iCloud ghost destinations (empty stubs
+    from earlier failed copies). Returns True on success."""
     needs_copy = not dest_file.exists()
     if not needs_copy:
         try:
@@ -639,7 +635,7 @@ def copy_one_file(src, dest_file):
             pass
         return True
 
-    # Clean up ghost so the next attempt isn't blocked
+    # clean up ghost so the next attempt isn't blocked
     try:
         if dest_file.exists() and dest_file.stat().st_size == 0:
             dest_file.unlink()
@@ -651,8 +647,8 @@ def copy_one_file(src, dest_file):
 def sort_dump(dump_path):
     """Interactive sort: assign each video to a country, copy + sidecars.
 
-    After the user finishes (or if everything was already sorted), runs the
-    post-sort chain: verify -> mirror -> cleanup.
+    After the user finishes (or if everything was already sorted), runs
+    _post_sort_cleanup: verify -> cleanup.
     """
     dump_path = Path(dump_path)
     if not dump_path.exists():
@@ -689,7 +685,7 @@ def sort_dump(dump_path):
         print("\nCommands:")
         print("  Numbers (e.g. 1-5,8,12) - select files to sort")
         print("  A - select all")
-        print("  Q - quit sorting (skip cleanup; dump kept)")
+        print("  Q - quit sorting, keep the dump")
 
         choice = input("\nSelect: ").strip().upper()
         if choice == "Q":
@@ -754,8 +750,8 @@ def sort_dump(dump_path):
 
 
 def _post_sort_cleanup(dump_path):
-    """Post-sort chain: verify destination hashes, then delete the dump.
-    Deletion is gated on the verify passing."""
+    """Runs after sort. Deletes the dump only when every video is sorted and
+    every copy matches its dump hash."""
     print(f"\n{'-' * 60}")
     print(f"VERIFY -> CLEANUP: {dump_path.name}")
     print(f"{'-' * 60}")
@@ -778,15 +774,15 @@ def _post_sort_cleanup(dump_path):
     else:
         print("  No videos to verify.")
 
-    # Soft warning: orphaned images in the dump that won't reach The Images
+    # soft warning: orphaned images in the dump that won't reach The Images
     image_files = find_image_files(dump_path)
     # Sony THMBNL/*T01.JPG were already sorted as video sidecars - exclude them
     orphans = [img for img in image_files
                if not (img.parent.name.upper() == "THMBNL"
                        or img.stem.upper().endswith("T01"))]
     if orphans:
-        print(f"  NOTE: {len(orphans)} photo file(s) in dump will be deleted.")
-        print(f"        Run `images` command before sort if you want to keep them.")
+        print(f"  {len(orphans)} photo file(s) in the dump will be deleted.")
+        print("  Run `images` before sort if you want to keep them.")
 
     print(f"  Deleting dump: {dump_path.name}")
     shutil.rmtree(dump_path)
@@ -824,12 +820,12 @@ def verify_sorted_against_dump(dump_path, sorted_list):
             failures.append(f"{footage_video.name}: hash mismatch")
             continue
 
-        # Verify sidecars too
+        # verify sidecars too
         for sc in find_sidecars(dump_video, camera, dump_root=dump_path):
             sc_rel = str(sc.relative_to(dump_path))
             sc_expected = stored.get(sc_rel)
             if sc_expected is None:
-                continue  # sidecar wasn't checksummed; skip (shouldn't happen post-pull)
+                continue  # sidecar wasn't checksummed, skip (shouldn't happen after a pull)
             sc_footage = footage_video.parent / sc.name
             if not sc_footage.exists():
                 failures.append(f"{sc.name}: missing from footage")
@@ -852,7 +848,7 @@ def verify_sorted_against_dump(dump_path, sorted_list):
 
 
 # ============================================================
-# Verify (re-check a dump's stored checksums)
+# verify (recheck a dump's stored checksums)
 # ============================================================
 
 def verify_dump(dump_path):
@@ -902,7 +898,7 @@ def verify_dump(dump_path):
 
 
 # ============================================================
-# Reconcile / status
+# reconcile / status
 # ============================================================
 
 def reconcile_dump(dump_path, footage_index=None):
@@ -986,7 +982,7 @@ def print_status(dump_path=None):
 
 
 # ============================================================
-# Images workflow (DCIM -> The Images/<Event>/)
+# images workflow (DCIM -> The Images/<Event>/)
 # ============================================================
 
 def select_event():
@@ -1009,7 +1005,7 @@ def select_event():
 
 
 def pull_images_from_card(card_path, event_name):
-    """Pull DCIM images from one card to The Images/<event>/, verify, mirror."""
+    """Pull DCIM images from one card to The Images/<event>/ and verify them."""
     card_path = Path(card_path)
     dcim = card_path / "DCIM"
     if not dcim.is_dir():
@@ -1024,7 +1020,7 @@ def pull_images_from_card(card_path, event_name):
     dest = THE_IMAGES / event_name
     dest.mkdir(parents=True, exist_ok=True)
 
-    # Hash sources up-front (single read) so we can verify after copy
+    # hash sources first (single read) so we can verify after copy
     print(f"  Hashing {len(images)} sources...")
     source_hashes = {}
     for img in images:
@@ -1103,17 +1099,17 @@ def run_images_command():
 
 
 # ============================================================
-# Backfill (recover missing sidecars from the original cards)
+# backfill (recover missing sidecars from the original cards)
 # ============================================================
 
 def _strip_sony_suffix(stem):
-    # drop a trailing sony suffix like M01 / T01 so a sidecar stem matches its
+    # drop a trailing Sony suffix like M01 / T01 so a sidecar stem matches its
     # video stem
     return re.sub(r"(?i)[MT]\d+$", "", stem)
 
 
 def _camera_from_footage_path(path):
-    # in The Footage the camera is encoded in the top-level folder name, not in
+    # in The Footage the camera is encoded in the top folder name, not in
     # the file path the way detect_camera expects on a card
     try:
         top = path.relative_to(THE_FOOTAGE).parts[0]
@@ -1129,10 +1125,10 @@ def _missing_sidecars_beside(video):
     """For a sorted footage video, return (miss_xml, miss_thumb). Sidecars sit
     in the same folder as the video once sorted.
 
-    Only Sony is checked. The pre-fix bug was Sony-specific (cross-folder THMBNL
-    plus the M01/T01 suffix). DJI and iPhone keep same-stem sidecars next to the
-    video, were never affected, and their sidecars are optional, so non-Sony
-    videos are reported complete."""
+    Only Sony is checked. Its thumbnail sits in THMBNL/ and its sidecars carry
+    M01/T01 suffixes, so older sorts missed them. DJI and iPhone keep sidecars
+    with the same stem next to the video. Those are optional, so other cameras
+    are reported complete."""
     cam = _camera_from_footage_path(video)
     if CAMERAS.get(cam, {}).get("sidecar_strategy") != "sony":
         return (False, False)
@@ -1188,7 +1184,7 @@ def index_card_clips(cards=None):
 
 
 def load_accepted_baseline():
-    """Relative footage paths the user has accepted as permanently sidecar-less."""
+    """Relative footage paths whose missing sidecars the user has accepted for good."""
     try:
         return set(json.loads(SIDECAR_BASELINE.read_text()).get("accepted", []))
     except (OSError, json.JSONDecodeError):
@@ -1206,11 +1202,10 @@ def run_backfill(apply=False, accept=False):
     """Recover missing Sony sidecars from mounted cards, or accept the gaps no
     card can fill as final.
 
-    Footage videos are matched to card clips by (name, size); for each match we
-    copy any sidecar the card has but the footage lacks. Sidecars no connected
-    card can provide and that the user has accepted (--accept) are reported as
-    final, not as problems, so the archive reads complete. Read-only unless
-    apply or accept. Video files are never touched.
+    Footage videos are matched to card clips by (name, size). For each match we
+    copy any sidecar the card has but the footage lacks. Gaps accepted with
+    --accept are reported as final. Writes nothing unless apply or accept is
+    set. Video files are never touched.
     """
     records = audit_footage_sidecars()
 
@@ -1222,7 +1217,7 @@ def run_backfill(apply=False, accept=False):
 
     incomplete = {relpath(v): v for v, *_ in records}
 
-    # what a currently-mounted card can complete right now
+    # what a mounted card can complete right now
     cards = find_mounted_cards()
     index = index_card_clips(cards) if cards else {}
     plan = []                       # (sidecar_src, dest_file)
@@ -1259,19 +1254,19 @@ def run_backfill(apply=False, accept=False):
     if cards:
         print(f"  cards mounted            : {', '.join(c.name for c in cards)}")
 
-    # accept: snapshot every currently-incomplete video as final
+    # accept: snapshot every video that is incomplete now as final
     if accept:
         save_accepted_baseline(set(accepted) | set(incomplete))
-        print(f"\nAccepted {len(incomplete)} videos as final; sidecars no card can provide "
+        print(f"\nAccepted {len(incomplete)} videos as final. Sidecars no card can provide "
               f"are now treated as complete.")
         if recoverable:
-            print(f"  Note: {len(recoverable)} are still recoverable from a mounted card if "
-                  f"you'd rather run `backfill --apply` first.")
+            print(f"  {len(recoverable)} of these are recoverable from a mounted card now. "
+                  f"Run `backfill --apply` to copy them.")
         print(f"  Baseline: {SIDECAR_BASELINE}")
         log(f"Backfill: accepted {len(incomplete)} videos as final")
         return
 
-    # all-clear: nothing recoverable and nothing unaccounted
+    # all clear: nothing recoverable and nothing unaccounted
     if not recoverable and not unaccounted:
         print("\nArchive complete: every video has its sidecars or is accepted as final.")
         return
@@ -1287,7 +1282,7 @@ def run_backfill(apply=False, accept=False):
             print(f"    + {dest_file.parent.name}/{sc.name}")
         if len(plan) > 8:
             print(f"    ... and {len(plan) - 8} more")
-        print("\nRead-only. Re-run with --apply to copy these into The Footage.")
+        print("\nNothing copied. Rerun with --apply to copy these into The Footage.")
         return
 
     print(f"\nCopying {len(plan)} sidecars (rsync + chmod 644 + verify)...")
@@ -1316,7 +1311,7 @@ def run_backfill(apply=False, accept=False):
 
 
 # ============================================================
-# Logging
+# logging
 # ============================================================
 
 def log(msg):
@@ -1326,7 +1321,7 @@ def log(msg):
 
 
 # ============================================================
-# CLI
+# cli
 # ============================================================
 
 def _list_dumps():

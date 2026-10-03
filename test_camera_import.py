@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-# Tests for camera_import.py
-# Runs entirely in temp directories - no real cards, no Drive needed.
+# tests for camera_import.py
+# runs entirely in temp directories - no real cards needed.
 
 import hashlib
 import json
@@ -23,7 +23,7 @@ def make_fake_file(path, content=b"test video data"):
 
 
 # ============================================================
-# Hash + checksum tests
+# hash + checksum tests
 # ============================================================
 
 def test_hash_file_xxhash():
@@ -71,7 +71,7 @@ def test_compute_checksums_nested():
 
 
 # ============================================================
-# verify_dump (re-check stored hashes on the dump itself)
+# verify_dump (recheck stored hashes on the dump itself)
 # ============================================================
 
 def test_verify_dump_xxhash():
@@ -120,7 +120,7 @@ def test_verify_dump_detects_missing():
 
 
 # ============================================================
-# Camera detection
+# camera detection
 # ============================================================
 
 def test_detect_sony():
@@ -144,7 +144,7 @@ def test_detect_unknown():
 
 
 # ============================================================
-# Sidecar discovery - Sony FX30 cross-folder pattern
+# sidecar discovery - Sony FX30 pattern across folders
 # ============================================================
 
 def test_find_sony_sidecars_xml_and_thumbnail():
@@ -157,7 +157,7 @@ def test_find_sony_sidecars_xml_and_thumbnail():
         make_fake_file(clip / "Sony FX300814.MP4", b"video")
         make_fake_file(clip / "Sony FX300814M01.XML", b"<xml/>")
         make_fake_file(thmbnl / "Sony FX300814T01.JPG", b"jpg data")
-        # A different clip's sidecars should NOT match
+        # a different clip's sidecars should not match
         make_fake_file(clip / "Sony FX300999M01.XML", b"<xml/>")
         make_fake_file(thmbnl / "Sony FX300999T01.JPG", b"jpg")
 
@@ -167,7 +167,7 @@ def test_find_sony_sidecars_xml_and_thumbnail():
 
 
 def test_find_sony_sidecars_case_insensitive_match():
-    """File extensions can be upper or lower; matching is case-insensitive."""
+    """File extensions can be upper or lower case. Matching ignores case."""
     with tempfile.TemporaryDirectory() as tmp:
         dump = Path(tmp) / "dump"
         clip = dump / "PRIVATE" / "M4ROOT" / "CLIP"
@@ -177,7 +177,7 @@ def test_find_sony_sidecars_case_insensitive_match():
         make_fake_file(thmbnl / "Sony FX300814T01.jpg", b"jpg")  # lowercase
 
         sidecars = ci.find_sony_sidecars(clip / "Sony FX300814.MP4", dump)
-        # Real on-disk names returned (case preserved)
+        # real names on disk returned (case preserved)
         names = {s.name for s in sidecars}
         assert "Sony FX300814M01.xml" in names
         assert "Sony FX300814T01.jpg" in names
@@ -208,7 +208,7 @@ def test_find_sony_sidecars_no_match_when_no_M01():
 
 
 def test_find_sidecars_routes_sony_to_sony_logic():
-    """find_sidecars(camera_type='SONY') should use the cross-folder Sony logic."""
+    """find_sidecars(camera_type='SONY') should use the Sony logic that looks across folders."""
     with tempfile.TemporaryDirectory() as tmp:
         dump = Path(tmp) / "dump"
         clip = dump / "PRIVATE" / "M4ROOT" / "CLIP"
@@ -223,7 +223,7 @@ def test_find_sidecars_routes_sony_to_sony_logic():
 
 
 # ============================================================
-# Sidecar discovery - DJI / iPhone extension match
+# sidecar discovery - DJI / iPhone extension match
 # ============================================================
 
 def test_find_extension_sidecars_dji():
@@ -267,7 +267,7 @@ def test_find_extension_sidecars_skips_self():
 
 
 # ============================================================
-# Selection parsing
+# selection parsing
 # ============================================================
 
 def test_parse_selection_single():
@@ -291,7 +291,7 @@ def test_parse_selection_invalid():
 
 
 # ============================================================
-# Path building
+# path building
 # ============================================================
 
 def test_build_dest_path_sony():
@@ -338,8 +338,8 @@ def test_select_country_accepts_new():
 
 
 def test_select_country_warns_on_camera_body_and_reprompts():
-    """Typing a camera-body name (e.g. 'Mavic Mini') triggers a warning;
-    answering 'n' loops back so the user can type a real location."""
+    """Typing a camera body name (e.g. 'Mavic Mini') triggers a warning.
+    Answering 'n' loops back so the user can type a real location."""
     with tempfile.TemporaryDirectory() as tmp:
         footage = Path(tmp) / "The Footage"
         footage.mkdir()
@@ -349,7 +349,7 @@ def test_select_country_warns_on_camera_body_and_reprompts():
 
 
 def test_select_country_accepts_camera_body_with_override():
-    """y at the override prompt forces the camera-body name through."""
+    """y at the override prompt forces the camera body name through."""
     with tempfile.TemporaryDirectory() as tmp:
         footage = Path(tmp) / "The Footage"
         footage.mkdir()
@@ -359,7 +359,7 @@ def test_select_country_accepts_camera_body_with_override():
 
 
 def test_select_country_does_not_warn_on_event_name():
-    """Event names like 'Graduation' contain no camera-body keywords."""
+    """Event names like 'Graduation' contain no camera body keywords."""
     with tempfile.TemporaryDirectory() as tmp:
         footage = Path(tmp) / "The Footage"
         footage.mkdir()
@@ -378,7 +378,7 @@ def test_select_event_returns_typed_name():
 
 
 # ============================================================
-# File counting + footage indexing
+# file counting + footage indexing
 # ============================================================
 
 def test_count_files():
@@ -402,7 +402,7 @@ def test_build_footage_size_index_keys_by_name_and_size():
         footage = Path(tmp) / "The Footage"
         make_fake_file(footage / "Sony SLOG-3" / "Japan" / "C0001.MP4", b"abc")
         make_fake_file(footage / "DJI DLOG-M" / "Chile" / "DJI_0001.MP4", b"defgh")
-        make_fake_file(footage / "Sony SLOG-3" / "Japan" / "C0002.MP4", b"")  # 0-byte
+        make_fake_file(footage / "Sony SLOG-3" / "Japan" / "C0002.MP4", b"")  # 0 bytes
         make_fake_file(footage / "Sony SLOG-3" / "Japan" / "C0001.XML", b"<xml/>")
 
         with mock.patch.object(ci, "THE_FOOTAGE", footage):
@@ -449,7 +449,7 @@ def test_find_card_excludes_skips_dupe_and_sony_sidecars():
         make_fake_file(clip / "Sony FX300001.MP4", b"sorted already")
         make_fake_file(clip / "Sony FX300001M01.XML", b"<xml/>")
         make_fake_file(thmbnl / "Sony FX300001T01.JPG", b"thumb")
-        # A new clip - should NOT be excluded
+        # a new clip - should not be excluded
         make_fake_file(clip / "Sony FX300099.MP4", b"new clip")
         make_fake_file(clip / "Sony FX300099M01.XML", b"<xml/>")
 
@@ -501,7 +501,7 @@ def test_image_extensions_include_raw_formats():
 
 
 # ============================================================
-# verify_sorted_against_dump - the post-sort re-verification
+# verify_sorted_against_dump - the check after sort
 # ============================================================
 
 def test_verify_sorted_against_dump_passes_when_hashes_match():
@@ -521,11 +521,11 @@ def test_verify_sorted_against_dump_passes_when_hashes_match():
         make_fake_file(clip / "Sony FX300001M01.XML", xml_data)
         make_fake_file(thmbnl / "Sony FX300001T01.JPG", thm_data)
 
-        # Write dump's checksums.json
+        # write dump's checksums.json
         checksums = ci.compute_checksums(dump)
         (dump / "checksums.json").write_text(json.dumps(checksums))
 
-        # Copy to footage (simulating sort)
+        # copy to footage (simulating sort)
         make_fake_file(footage / "Sony FX300001.MP4", video_data)
         make_fake_file(footage / "Sony FX300001M01.XML", xml_data)
         make_fake_file(footage / "Sony FX300001T01.JPG", thm_data)
@@ -548,7 +548,7 @@ def test_verify_sorted_against_dump_fails_on_corrupt_destination():
         checksums = ci.compute_checksums(dump)
         (dump / "checksums.json").write_text(json.dumps(checksums))
 
-        # Sorted to footage but corrupted
+        # sorted to footage but corrupted
         make_fake_file(footage / "Sony FX300001.MP4", b"corrupted")
 
         sorted_list = [
@@ -571,7 +571,7 @@ def test_verify_sorted_against_dump_fails_on_missing_sidecar():
         checksums = ci.compute_checksums(dump)
         (dump / "checksums.json").write_text(json.dumps(checksums))
 
-        # Video sorted, XML missing from footage
+        # video sorted, XML missing from footage
         make_fake_file(footage / "Sony FX300001.MP4", b"video")
 
         sorted_list = [
@@ -598,7 +598,7 @@ def test_copy_one_file_creates_destination():
 
 
 def test_copy_one_file_overwrites_ghost():
-    """A 0-byte destination (iCloud ghost) gets overwritten."""
+    """An empty destination (iCloud ghost) gets overwritten."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         src = tmp / "src.mp4"
@@ -611,7 +611,7 @@ def test_copy_one_file_overwrites_ghost():
 
 
 def test_copy_one_file_skips_existing_real_file():
-    """If destination already exists with content, don't re-copy."""
+    """If destination already exists with content, don't copy it again."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         src = tmp / "src.mp4"
@@ -624,7 +624,7 @@ def test_copy_one_file_skips_existing_real_file():
 
 
 # ============================================================
-# Duplicate-pull guard
+# duplicate pull guard
 # ============================================================
 
 def test_find_existing_dump_returns_none_when_no_dumps():
@@ -682,7 +682,7 @@ def test_find_existing_dump_ignores_incomplete():
         the_dump = Path(tmp) / "The Dump"
         d = the_dump / "2026-05-18_120000_SD256"
         d.mkdir(parents=True)
-        # No manifest.json - interrupted pull
+        # no manifest.json - interrupted pull
         with mock.patch.object(ci, "THE_DUMP", the_dump):
             assert ci.find_existing_dump_for_card("SD256", 1311) is None
 
@@ -695,12 +695,12 @@ def test_pull_card_skips_when_duplicate_detected_and_user_declines():
         the_dump = media / "The Dump"
         the_dump.mkdir(parents=True)
 
-        # Fake card with 1 file
+        # fake card with 1 file
         card = tmp / "SD256"
         make_fake_file(card / "PRIVATE" / "M4ROOT" / "CLIP" / "Sony FX300001.MP4", b"v1")
         card_count = ci.count_files(card)
 
-        # Existing complete dump for this card with matching count
+        # existing complete dump for this card with matching count
         existing_dump = the_dump / "2026-05-18_120000_SD256"
         existing_dump.mkdir(parents=True)
         (existing_dump / "manifest.json").write_text(json.dumps({
@@ -716,7 +716,7 @@ def test_pull_card_skips_when_duplicate_detected_and_user_declines():
             result = ci.pull_card(card)
 
         assert result == existing_dump
-        # No new dump folder should have been created (only the pre-existing one)
+        # no new dump folder should have been created (only the existing one)
         dumps = [d for d in the_dump.iterdir() if d.is_dir()]
         assert len(dumps) == 1
         assert dumps[0] == existing_dump
@@ -745,17 +745,17 @@ def test_pull_card_force_overrides_duplicate_guard():
              mock.patch.object(ci, "THE_DUMP", the_dump), \
              mock.patch.object(ci, "THE_FOOTAGE", media / "The Footage"), \
              mock.patch.object(ci, "LOG_FILE", media / "import_log.txt"):
-            # No input mock - if prompt fires the test will hang/error
+            # no input mock - if prompt fires the test will hang/error
             result = ci.pull_card(card, force=True)
 
-        # Should create a new dump in addition to existing one
+        # should create a new dump in addition to existing one
         dumps = sorted([d for d in the_dump.iterdir() if d.is_dir()])
         assert len(dumps) == 2
         assert result != existing_dump
 
 
 # ============================================================
-# Backfill - recover missing sidecars from the original cards
+# backfill - recover missing sidecars from the original cards
 # ============================================================
 
 def test_strip_sony_suffix():
@@ -795,7 +795,8 @@ def test_missing_sidecars_beside_missing_both():
 
 
 def test_missing_sidecars_beside_non_sony_not_flagged():
-    """DJI / iPhone are never flagged: same-stem sidecars, optional, not the bug."""
+    """DJI / iPhone are never flagged. Their sidecars share the video stem and
+    are optional."""
     with tempfile.TemporaryDirectory() as tmp:
         footage = Path(tmp) / "The Footage"
         chile = footage / "DJI DLOG-M" / "Chile"
@@ -881,7 +882,7 @@ def test_run_backfill_apply_copies_and_verifies():
 
 
 def test_run_backfill_size_mismatch_not_recovered():
-    """Name matches but size differs (Sony clip-number reuse) -> do not recover."""
+    """Name matches but size differs (Sony reuses clip numbers) -> do not recover."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         footage = tmp / "The Footage"
@@ -909,7 +910,7 @@ def test_load_accepted_baseline_empty_when_absent():
 
 
 def test_run_backfill_accept_writes_baseline():
-    """--accept records currently-incomplete videos so they read as final."""
+    """--accept records videos that are incomplete now so they read as final."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         footage = tmp / "The Footage"
@@ -925,18 +926,17 @@ def test_run_backfill_accept_writes_baseline():
 
 
 # ============================================================
-# End-to-end: full Sony pull + sort + verify + cleanup
+# end to end: full Sony pull + sort + verify + cleanup
 # ============================================================
 
 def test_full_sony_flow_with_sidecars():
-    """Simulate the complete flow: fake Sony card -> pull -> sort -> verify -> cleanup."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         media = tmp / "Documents" / "Media"
         the_dump = media / "The Dump"
         the_footage = media / "The Footage"
 
-        # Fake Sony card with one video + XML + thumbnail
+        # fake Sony card with one video + XML + thumbnail
         card = tmp / "card"
         make_fake_file(card / "PRIVATE" / "M4ROOT" / "CLIP" / "Sony FX300001.MP4",
                        b"sony video bytes goes here")
@@ -947,7 +947,7 @@ def test_full_sony_flow_with_sidecars():
         make_fake_file(card / "PRIVATE" / "DATABASE" / "DATABASE.BIN",
                        b"sony bookkeeping")
 
-        # Patch paths
+        # patch paths
         with mock.patch.object(ci, "MEDIA_BASE", media), \
              mock.patch.object(ci, "THE_DUMP", the_dump), \
              mock.patch.object(ci, "THE_FOOTAGE", the_footage), \
@@ -957,27 +957,27 @@ def test_full_sony_flow_with_sidecars():
             the_dump.mkdir(parents=True)
             the_footage.mkdir(parents=True)
 
-            # 1. Pull
+            # 1. pull
             dump_path = ci.pull_card(card)
             assert dump_path.exists()
             assert (dump_path / "checksums.json").exists()
             assert (dump_path / "manifest.json").exists()
-            # Video, XML, thumbnail all came through
+            # video, XML, thumbnail all came through
             assert (dump_path / "PRIVATE" / "M4ROOT" / "CLIP" / "Sony FX300001.MP4").exists()
             assert (dump_path / "PRIVATE" / "M4ROOT" / "CLIP" / "Sony FX300001M01.XML").exists()
             assert (dump_path / "PRIVATE" / "M4ROOT" / "THMBNL" / "Sony FX300001T01.JPG").exists()
 
-            # 2. Sort - select all (A), country "Iceland"
+            # 2. sort - select all (A), country "Iceland"
             with mock.patch("builtins.input", side_effect=["A", "Iceland"]):
                 ci.sort_dump(dump_path)
 
-            # 3. Sorted files exist in The Footage with proper structure
+            # 3. sorted files exist in The Footage with proper structure
             iceland = the_footage / "Sony SLOG-3" / "Iceland"
             assert (iceland / "Sony FX300001.MP4").exists()
             assert (iceland / "Sony FX300001M01.XML").exists()
             assert (iceland / "Sony FX300001T01.JPG").exists()
 
-            # 4. Dump folder deleted by post-sort cleanup
+            # 4. dump folder deleted by the cleanup after sort
             assert not dump_path.exists()
 
 
@@ -1006,11 +1006,11 @@ def test_full_sony_flow_keeps_dump_if_unsorted_remain():
 
             dump_path = ci.pull_card(card)
 
-            # Sort only video 1, then quit
+            # sort only video 1, then quit
             with mock.patch("builtins.input", side_effect=["1", "Iceland", "Q"]):
                 ci.sort_dump(dump_path)
 
-            # Video 1 sorted, video 2 still in dump -> dump must remain
+            # video 1 sorted, video 2 still in dump -> dump must remain
             assert (the_footage / "Sony SLOG-3" / "Iceland" / "Sony FX300001.MP4").exists()
             assert dump_path.exists()
             assert (dump_path / "PRIVATE" / "M4ROOT" / "CLIP" / "Sony FX300002.MP4").exists()
@@ -1038,23 +1038,22 @@ def test_full_sony_flow_keeps_dump_if_verification_fails():
 
             dump_path = ci.pull_card(card)
 
-            # Sort, then sabotage the sorted file before post-sort verify
             iceland = the_footage / "Sony SLOG-3" / "Iceland"
             iceland.mkdir(parents=True, exist_ok=True)
 
-            # Pre-create a corrupted destination so sort's copy_one_file
+            # create a corrupted destination first so sort's copy_one_file
             # sees the file already exists with content and skips it
             (iceland / "Sony FX300001.MP4").write_bytes(b"CORRUPTED")
 
             with mock.patch("builtins.input", side_effect=["A", "Iceland"]):
                 ci.sort_dump(dump_path)
 
-            # Dump must remain because hash on destination != stored hash
+            # dump must remain because hash on destination != stored hash
             assert dump_path.exists()
 
 
 # ============================================================
-# End-to-end: DCIM image pull
+# end to end: DCIM image pull
 # ============================================================
 
 def test_dcim_image_pull_flow():
@@ -1080,19 +1079,19 @@ def test_dcim_image_pull_flow():
             event_dir = the_images / "Family - Christmas '26"
             assert (event_dir / "IMG_0001.HEIC").exists()
             assert (event_dir / "IMG_0002.JPG").exists()
-            # Video should NOT be in The Images
+            # video should not be in The Images
             assert not (event_dir / "IMG_0003.MOV").exists()
-            # Content preserved
+            # content preserved
             assert (event_dir / "IMG_0001.HEIC").read_bytes() == b"heic body 1"
 
 
 # ============================================================
-# Test runner
+# test runner
 # ============================================================
 
 if __name__ == "__main__":
     tests = [
-        # Hashing
+        # hashing
         test_hash_file_xxhash,
         test_hash_file_md5,
         test_compute_checksums_uses_xxhash,
@@ -1103,13 +1102,13 @@ if __name__ == "__main__":
         test_verify_dump_legacy_md5,
         test_verify_dump_detects_corruption,
         test_verify_dump_detects_missing,
-        # Camera detection
+        # camera detection
         test_detect_sony,
         test_detect_dji,
         test_detect_iphone_dcim,
         test_detect_iphone_standalone_mov,
         test_detect_unknown,
-        # Sony sidecars (the bug-fix tests)
+        # Sony sidecars
         test_find_sony_sidecars_xml_and_thumbnail,
         test_find_sony_sidecars_case_insensitive_match,
         test_find_sony_sidecars_no_thmbnl_folder,
@@ -1119,30 +1118,30 @@ if __name__ == "__main__":
         test_find_extension_sidecars_dji,
         test_find_extension_sidecars_iphone,
         test_find_extension_sidecars_skips_self,
-        # Selection parsing
+        # selection parsing
         test_parse_selection_single,
         test_parse_selection_range,
         test_parse_selection_mixed,
         test_parse_selection_out_of_range,
         test_parse_selection_invalid,
-        # Path building
+        # path building
         test_build_dest_path_sony,
         test_build_dest_path_dji,
         test_build_dest_path_iphone,
         test_camera_folder_names_match_disk,
-        # Selection prompts
+        # selection prompts
         test_select_country_returns_typed_name,
         test_select_country_accepts_new,
         test_select_country_warns_on_camera_body_and_reprompts,
         test_select_country_accepts_camera_body_with_override,
         test_select_country_does_not_warn_on_event_name,
         test_select_event_returns_typed_name,
-        # File counting + footage indexing
+        # file counting + footage indexing
         test_count_files,
         test_build_footage_size_index_empty,
         test_build_footage_size_index_keys_by_name_and_size,
         test_build_footage_index_skips_zero_byte,
-        # Dedup-at-pull
+        # dedup at pull
         test_find_card_excludes_no_dupes,
         test_find_card_excludes_skips_dupe_and_sony_sidecars,
         test_find_card_excludes_size_mismatch_kept,
@@ -1157,7 +1156,7 @@ if __name__ == "__main__":
         test_copy_one_file_creates_destination,
         test_copy_one_file_overwrites_ghost,
         test_copy_one_file_skips_existing_real_file,
-        # Duplicate-pull guard
+        # duplicate pull guard
         test_find_existing_dump_returns_none_when_no_dumps,
         test_find_existing_dump_returns_none_for_different_card,
         test_find_existing_dump_returns_none_for_different_count,
@@ -1165,7 +1164,7 @@ if __name__ == "__main__":
         test_find_existing_dump_ignores_incomplete,
         test_pull_card_skips_when_duplicate_detected_and_user_declines,
         test_pull_card_force_overrides_duplicate_guard,
-        # Backfill
+        # backfill
         test_strip_sony_suffix,
         test_camera_from_footage_path,
         test_missing_sidecars_beside_complete_sony,
@@ -1178,7 +1177,7 @@ if __name__ == "__main__":
         test_run_backfill_size_mismatch_not_recovered,
         test_load_accepted_baseline_empty_when_absent,
         test_run_backfill_accept_writes_baseline,
-        # End-to-end
+        # end to end
         test_full_sony_flow_with_sidecars,
         test_full_sony_flow_keeps_dump_if_unsorted_remain,
         test_full_sony_flow_keeps_dump_if_verification_fails,
